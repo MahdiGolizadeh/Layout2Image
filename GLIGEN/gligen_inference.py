@@ -69,7 +69,7 @@ def alpha_generator(length, type=None):
 
 def load_ckpt(ckpt_path):
     
-    saved_ckpt = torch.load(ckpt_path)
+    saved_ckpt = torch.load(ckpt_path, weights_only=False)
     config = saved_ckpt["config_dict"]["_content"]
 
     model = instantiate_from_config(config['model']).to(device).eval()
@@ -468,7 +468,7 @@ if __name__ == "__main__":
 
         # - - - - - - - - GLIGEN on text grounding for generation - - - - - - - - # 
         dict(
-            ckpt = "../gligen_checkpoints/checkpoint_generation_text.pth",
+            ckpt = "gligen_checkpoints/checkpoint_generation_text.pth",
             prompt = "a teddy bear sitting next to a bird",
             phrases = ['a teddy bear', 'a bird'],
             locations = [ [0.0,0.09,0.33,0.76], [0.55,0.11,1.0,0.8] ],
