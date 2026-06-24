@@ -156,6 +156,43 @@ class FrozenCLIPEmbedder(AbstractEncoder):
         for param in self.parameters():
             param.requires_grad = False
 
+    def load_state_dict(self, state_dict, strict=True):
+        """Load CLIP text weights across supported transformers versions.
+
+        Older transformers releases stored CLIPTextModel weights under
+        ``transformer.text_model.*`` while newer releases expose the same text
+        tower directly under ``transformer.*``.  GLIGEN checkpoints can contain
+        either naming scheme, so normalize the checkpoint keys to the currently
+        installed transformers layout before delegating to ``nn.Module``.
+        """
+        expected_keys = self.state_dict().keys()
+        has_expected_text_model = any(key.startswith("transformer.text_model.") for key in expected_keys)
+        has_expected_direct = any(key.startswith("transformer.embeddings.") for key in expected_keys)
+        has_saved_text_model = any(key.startswith("transformer.text_model.") for key in state_dict.keys())
+        has_saved_direct = any(key.startswith("transformer.embeddings.") for key in state_dict.keys())
+
+        if has_saved_text_model and has_expected_direct and not has_expected_text_model:
+            state_dict = {
+                key.replace("transformer.text_model.", "transformer.", 1): value
+                for key, value in state_dict.items()
+            }
+        elif has_saved_direct and has_expected_text_model and not has_expected_direct:
+            state_dict = {
+                (key.replace("transformer.", "transformer.text_model.", 1)
+                 if key.startswith("transformer.") else key): value
+                for key, value in state_dict.items()
+            }
+
+        # Some transformers versions register position_ids as a non-persistent
+        # buffer and others save it in the state dict. It is deterministic, so
+        # safely drop it when the active model does not expect it.
+        state_dict = {
+            key: value for key, value in state_dict.items()
+            if key in expected_keys or not key.endswith("position_ids")
+        }
+
+        return super().load_state_dict(state_dict, strict=strict)
+
     def forward(self, text, return_pooler_output=False):
         batch_encoding = self.tokenizer(text, truncation=True, max_length=self.max_length, return_length=True,
                                         return_overflowing_tokens=False, padding="max_length", return_tensors="pt")
