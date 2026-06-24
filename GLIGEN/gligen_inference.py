@@ -3,7 +3,8 @@ from PIL import Image, ImageDraw
 from omegaconf import OmegaConf
 from ldm.models.diffusion.ddim import DDIMSampler
 from ldm.models.diffusion.plms import PLMSSampler
-import os 
+import os
+from pathlib import Path 
 from transformers import CLIPProcessor, CLIPModel
 from copy import deepcopy
 import torch 
@@ -19,6 +20,7 @@ import torchvision.transforms.functional as TF
 import torchvision.transforms as transforms
 
 device = "cuda"
+SCRIPT_DIR = Path(__file__).resolve().parent
 
 
 def set_alpha_scale(model, alpha_scale):
@@ -66,8 +68,27 @@ def alpha_generator(length, type=None):
     return alphas
 
 
+def resolve_path(path):
+    """Resolve paths from cwd first, then relative to this script."""
+    path = Path(path).expanduser()
+    if path.is_absolute() or path.exists():
+        return path
+
+    script_relative = SCRIPT_DIR / path
+    if script_relative.exists():
+        return script_relative
+
+    return path
 
 def load_ckpt(ckpt_path):
+    ckpt_path = resolve_path(ckpt_path)
+    if not ckpt_path.exists():
+        raise FileNotFoundError(
+            f"Checkpoint not found: {ckpt_path}. "
+            "For text box generation, pass --task generation_box_text and "
+            "place checkpoint_generation_text.pth in --ckpt_dir (default: "
+            "gligen_checkpoints)."
+        )
     
     saved_ckpt = torch.load(ckpt_path, weights_only=False)
     config = saved_ckpt["config_dict"]["_content"]
@@ -105,14 +126,14 @@ def get_clip_feature(model, processor, input, is_image=False):
     if is_image:
         if input == None:
             return None
-        image = Image.open(input).convert("RGB")
+        image = Image.open(resolve_path(input)).convert("RGB")
         inputs = processor(images=[image],  return_tensors="pt", padding=True)
         inputs['pixel_values'] = inputs['pixel_values'].cuda() # we use our own preprocessing without center_crop 
         inputs['input_ids'] = torch.tensor([[0,1,2,3]]).cuda()  # placeholder
         outputs = model(**inputs)
         feature = outputs.image_embeds 
         if which_layer_image == 'after_reproject':
-            feature = project( feature, torch.load('projection_matrix').cuda().T ).squeeze(0)
+            feature = project( feature, torch.load(resolve_path('projection_matrix')).cuda().T ).squeeze(0)
             feature = ( feature / feature.norm() )  * 28.7 
             feature = feature.unsqueeze(0)
     else:
@@ -223,7 +244,7 @@ def prepare_batch_hed(meta, batch=1):
     
     pil_to_tensor = transforms.PILToTensor()
 
-    hed_edge = Image.open(meta['hed_image']).convert("RGB")
+    hed_edge = Image.open(resolve_path(meta['hed_image'])).convert("RGB")
     hed_edge = crop_and_resize(hed_edge)
     hed_edge = ( pil_to_tensor(hed_edge).float()/255 - 0.5 ) / 0.5
 
@@ -248,7 +269,7 @@ def prepare_batch_canny(meta, batch=1):
     
     pil_to_tensor = transforms.PILToTensor()
 
-    canny_edge = Image.open(meta['canny_image']).convert("RGB")
+    canny_edge = Image.open(resolve_path(meta['canny_image'])).convert("RGB")
     canny_edge = crop_and_resize(canny_edge)
 
     canny_edge = ( pil_to_tensor(canny_edge).float()/255 - 0.5 ) / 0.5
@@ -265,7 +286,7 @@ def prepare_batch_depth(meta, batch=1):
     
     pil_to_tensor = transforms.PILToTensor()
 
-    depth = Image.open(meta['depth']).convert("RGB")
+    depth = Image.open(resolve_path(meta['depth'])).convert("RGB")
     depth = crop_and_resize(depth)
     depth = ( pil_to_tensor(depth).float()/255 - 0.5 ) / 0.5
 
@@ -286,7 +307,7 @@ def prepare_batch_normal(meta, batch=1):
     
     pil_to_tensor = transforms.PILToTensor()
 
-    normal = Image.open(meta['normal']).convert("RGB")
+    normal = Image.open(resolve_path(meta['normal'])).convert("RGB")
     normal = crop_and_resize(normal)
     normal = ( pil_to_tensor(normal).float()/255 - 0.5 ) / 0.5
 
@@ -319,11 +340,11 @@ def prepare_batch_sem(meta, batch=1):
 
     pil_to_tensor = transforms.PILToTensor()
 
-    sem = Image.open( meta['sem']  ).convert("L") # semantic class index 0,1,2,3,4 in uint8 representation 
+    sem = Image.open(resolve_path(meta['sem'])).convert("L") # semantic class index 0,1,2,3,4 in uint8 representation
     sem = TF.center_crop(sem, min(sem.size))
     sem = sem.resize( (512, 512), Image.NEAREST ) # acorrding to official, it is nearest by default, but I don't know why it can prodice new values if not specify explicitly
     try:
-        sem_color = colorEncode(np.array(sem), loadmat('color150.mat')['colors'])
+        sem_color = colorEncode(np.array(sem), loadmat(resolve_path('color150.mat'))['colors'])
         Image.fromarray(sem_color).save("sem_vis.png")
     except:
         pass 
@@ -399,7 +420,7 @@ def run(meta, config, starting_noise=None):
         
         inpainting_mask = draw_masks_from_boxes( batch['boxes'], model.image_size  ).cuda()
         
-        input_image = F.pil_to_tensor( Image.open(meta["input_image"]).convert("RGB").resize((512,512)) ) 
+        input_image = F.pil_to_tensor( Image.open(resolve_path(meta["input_image"])).convert("RGB").resize((512,512)) )
         input_image = ( input_image.float().unsqueeze(0).cuda() / 255 - 0.5 ) / 0.5
         z0 = autoencoder.encode( input_image )
         
@@ -458,6 +479,8 @@ if __name__ == "__main__":
     parser.add_argument("--batch_size", type=int, default=5, help="")
     parser.add_argument("--no_plms", action='store_true', help="use DDIM instead. WARNING: I did not test the code yet")
     parser.add_argument("--guidance_scale", type=float,  default=7.5, help="")
+    parser.add_argument("--task", type=str, default="generation_box_text", help="Example to run. Use all to run every bundled example.")
+    parser.add_argument("--ckpt_dir", type=str, default="gligen_checkpoints", help="Directory containing GLIGEN .pth checkpoints.")
     parser.add_argument("--negative_prompt", type=str,  default='longbody, lowres, bad anatomy, bad hands, missing fingers, extra digit, fewer digits, cropped, worst quality, low quality', help="")
     #parser.add_argument("--negative_prompt", type=str,  default=None, help="")
     args = parser.parse_args()
@@ -468,7 +491,7 @@ if __name__ == "__main__":
 
         # - - - - - - - - GLIGEN on text grounding for generation - - - - - - - - # 
         dict(
-            ckpt = "gligen_checkpoints/checkpoint_generation_text.pth",
+            ckpt = os.path.join(args.ckpt_dir, "checkpoint_generation_text.pth"),
             prompt = "a teddy bear sitting next to a bird",
             phrases = ['a teddy bear', 'a bird'],
             locations = [ [0.0,0.09,0.33,0.76], [0.55,0.11,1.0,0.8] ],
@@ -479,7 +502,7 @@ if __name__ == "__main__":
 
         # - - - - - - - - GLIGEN on text grounding for inpainting - - - - - - - - # 
         dict(
-            ckpt = "../gligen_checkpoints/checkpoint_inpainting_text.pth",
+            ckpt = os.path.join(args.ckpt_dir, "checkpoint_inpainting_text.pth"),
             input_image = "inference_images/dalle2_museum.jpg",
             prompt = "a corgi and a cake",
             phrases =   ['corgi', 'cake'],
@@ -490,7 +513,7 @@ if __name__ == "__main__":
 
         # - - - - - - - - GLIGEN on image grounding for generation - - - - - - - - # 
         dict(
-            ckpt = "../gligen_checkpoints/checkpoint_generation_text_image.pth",
+            ckpt = os.path.join(args.ckpt_dir, "checkpoint_generation_text_image.pth"),
             prompt = "an alarm clock sitting on the beach",
             images = ['inference_images/clock.png'],
             phrases = ['alarm clock'],
@@ -503,7 +526,7 @@ if __name__ == "__main__":
 
         # - - - - - - - - GLIGEN on text and style grounding for generation - - - - - - - - # 
         dict(
-            ckpt = "../gligen_checkpoints/checkpoint_generation_text_image.pth",
+            ckpt = os.path.join(args.ckpt_dir, "checkpoint_generation_text_image.pth"),
             prompt = "a brick house in the woods, anime, oil painting",
             phrases =   ['a brick house',            'placehoder'],
             images =    ['inference_images/placeholder.png', 'inference_images/style_golden.jpg'],
@@ -517,7 +540,7 @@ if __name__ == "__main__":
 
         # - - - - - - - - GLIGEN on image grounding for inpainting - - - - - - - - # 
         dict(
-            ckpt = "../gligen_checkpoints/checkpoint_inpainting_text_image.pth",
+            ckpt = os.path.join(args.ckpt_dir, "checkpoint_inpainting_text_image.pth"),
             input_image = "inference_images/beach.jpg",
             prompt = "a bigben on the beach",
             images = [ 'inference_images/bigben.jpg'],
@@ -529,7 +552,7 @@ if __name__ == "__main__":
 
         # - - - - - - - - GLIGEN on hed grounding for generation - - - - - - - - # 
         dict(
-            ckpt ="../gligen_checkpoints/checkpoint_generation_hed.pth",
+            ckpt =os.path.join(args.ckpt_dir, "checkpoint_generation_hed.pth"),
             prompt = "a man is eating breakfast",  
             hed_image = 'inference_images/hed_man_eat.png',
             save_folder_name="hed",
@@ -541,7 +564,7 @@ if __name__ == "__main__":
 
         # - - - - - - - - GLIGEN on canny grounding for generation - - - - - - - - # 
         dict(
-            ckpt ="../gligen_checkpoints/checkpoint_generation_canny.pth",
+            ckpt =os.path.join(args.ckpt_dir, "checkpoint_generation_canny.pth"),
             prompt = "A Humanoid Robot Designed for Companionship", 
             canny_image = 'inference_images/canny_robot.png',
             alpha_type = [0.9, 0, 0.1], 
@@ -553,7 +576,7 @@ if __name__ == "__main__":
 
         # - - - - - - - - GLIGEN on normal grounding for generation - - - - - - - - # 
         dict(
-            ckpt ="../gligen_checkpoints/checkpoint_generation_normal.pth",
+            ckpt =os.path.join(args.ckpt_dir, "checkpoint_generation_normal.pth"),
             prompt = "a large tree with no leaves in front of a building", # 
             normal = 'inference_images/normal_tree_building.jpg', # a normal map 
             alpha_type = [0.7, 0, 0.3], 
@@ -563,7 +586,7 @@ if __name__ == "__main__":
 
         # - - - - - - - - GLIGEN on depth grounding for generation - - - - - - - - # 
         dict(
-            ckpt ="../gligen_checkpoints/checkpoint_generation_depth.pth",
+            ckpt =os.path.join(args.ckpt_dir, "checkpoint_generation_depth.pth"),
             prompt = "a Vibrant colorful Bird Sitting on Tree Branch", # 
             depth = 'inference_images/depth_bird.png', 
             alpha_type = [0.7, 0, 0.3], 
@@ -573,7 +596,7 @@ if __name__ == "__main__":
 
         # - - - - - - - - GLIGEN on sem grounding for generation - - - - - - - - # 
         dict(
-            ckpt ="../gligen_checkpoints/checkpoint_generation_sem.pth",
+            ckpt =os.path.join(args.ckpt_dir, "checkpoint_generation_sem.pth"),
             prompt = "a living room filled with lots of furniture and plants", # 
             sem = 'inference_images/sem_ade_living_room.png', # ADE raw annotation  
             alpha_type = [0.7, 0, 0.3], 
@@ -584,7 +607,7 @@ if __name__ == "__main__":
 
         # - - - - - - - - GLIGEN on keypoint grounding for generation - - - - - - - - # 
         dict(
-            ckpt = "../gligen_checkpoints/checkpoint_generation_keypoint.pth",
+            ckpt = os.path.join(args.ckpt_dir, "checkpoint_generation_keypoint.pth"),
             prompt = "A young man and a small boy are talking",
             locations = [  
                             [
@@ -639,6 +662,12 @@ if __name__ == "__main__":
 
     starting_noise = torch.randn(args.batch_size, 4, 64, 64).to(device)
     starting_noise = None
+    if args.task != "all":
+        task_names = [meta["save_folder_name"] for meta in meta_list]
+        if args.task not in task_names:
+            raise ValueError(f"Unknown --task {args.task!r}. Choose one of: {task_names + ['all']}")
+        meta_list = [meta for meta in meta_list if meta["save_folder_name"] == args.task]
+
     for meta in meta_list:
         run(meta, args, starting_noise)
 
