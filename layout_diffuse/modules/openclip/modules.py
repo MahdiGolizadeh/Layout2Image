@@ -172,9 +172,12 @@ class FrozenOpenCLIPEmbedder(AbstractEncoder):
     def encode_with_transformer(self, text):
         x = self.model.token_embedding(text)  # [batch_size, n_ctx, d_model]
         x = x + self.model.positional_embedding
-        x = x.permute(1, 0, 2)  # NLD -> LND
+        transformer_uses_batch_first = getattr(self.model.transformer, 'batch_first', False)
+        if not transformer_uses_batch_first:
+            x = x.permute(1, 0, 2)  # NLD -> LND for older OpenCLIP versions
         x = self.text_transformer_forward(x, attn_mask=self.model.attn_mask)
-        x = x.permute(1, 0, 2)  # LND -> NLD
+        if not transformer_uses_batch_first:
+            x = x.permute(1, 0, 2)  # LND -> NLD
         x = self.model.ln_final(x)
         return x
 
@@ -183,7 +186,7 @@ class FrozenOpenCLIPEmbedder(AbstractEncoder):
             if i == len(self.model.transformer.resblocks) - self.layer_idx:
                 break
             if self.model.transformer.grad_checkpointing and not torch.jit.is_scripting():
-                x = checkpoint(r, x, attn_mask)
+                x = checkpoint(r, x, None, None, attn_mask, use_reentrant=False)
             else:
                 x = r(x, attn_mask=attn_mask)
         return x

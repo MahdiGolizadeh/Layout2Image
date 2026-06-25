@@ -114,8 +114,9 @@ class DDIM_LDM_LAION_Text(DDIM_LDM_Text_VQVAETraining):
 
     def process_batch(self, batch, mode='train'):
         y_t, target, t, y_0, model_kwargs = super().process_batch(batch[0], mode)
+        layout = batch[1].clone().detach() if torch.is_tensor(batch[1]) else torch.tensor(batch[1])
         model_kwargs.update({'context': {
-            'layout': torch.tensor(batch[1]),
+            'layout': layout,
             'text': self.encode_text(batch[2])
         }})
         return y_t, target, t, y_0, model_kwargs
