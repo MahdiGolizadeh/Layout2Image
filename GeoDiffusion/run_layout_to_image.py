@@ -24,9 +24,8 @@ def run_layout_to_image(layout, args):
   # it at your own risk here
   disable_safety = True
   if disable_safety:
-    def null_safety(images, **kwargs):
-        return images, False
-    pipe.safety_checker = null_safety
+    pipe.safety_checker = None
+    pipe.requires_safety_checker = False
   
   ########################
   # Encode layout and build text prompt
