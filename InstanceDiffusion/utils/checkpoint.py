@@ -10,9 +10,23 @@ from ldm.models.diffusion.plms import PLMSSampler
 from torch.utils.tensorboard import SummaryWriter
 from dataset.jsondataset import sub_batch, batch_to_device
 
+def torch_load_trusted_checkpoint(ckpt_path, **kwargs):
+    """Load project checkpoints that may contain OmegaConf metadata.
+
+    PyTorch 2.6 changed ``torch.load`` to default to ``weights_only=True``,
+    which rejects the OmegaConf objects stored in older InstanceDiffusion
+    checkpoints. These checkpoints are loaded only from user-provided/local
+    paths, so keep the historical behavior explicit for compatibility.
+    """
+    try:
+        return torch.load(ckpt_path, weights_only=False, **kwargs)
+    except TypeError:
+        # Older PyTorch releases do not support the weights_only argument.
+        return torch.load(ckpt_path, **kwargs)
+
 def read_official_ckpt(ckpt_path):
     "Read offical pretrained SD ckpt and convert into our style" 
-    state_dict = torch.load(ckpt_path, map_location="cpu")["state_dict"]
+    state_dict = torch_load_trusted_checkpoint(ckpt_path, map_location="cpu")["state_dict"]
     out = {}
     out["model"] = {}
     out["text_encoder"] = {}
@@ -104,7 +118,7 @@ class ImageCaptionSaver:
 def load_autoresume_ckpt(checkpoint, config, model, ema, opt, scheduler):
     starting_iter = 0  
     if checkpoint is not None:
-        checkpoint = torch.load(checkpoint, map_location="cpu")
+        checkpoint = torch_load_trusted_checkpoint(checkpoint, map_location="cpu")
         missing_keys, unexpected_keys = model.load_state_dict(checkpoint["model"], strict=False)
         # assert unexpected_keys == [] and missing_keys == [], "missing keys in pretrained model: {}, unexpected_keys keys in pretrained model: {}".format(missing_keys, unexpected_keys)
         print("missing keys in pretrained model: {}".format(missing_keys))
@@ -222,7 +236,7 @@ def synchronize():
     dist.barrier()
 
 def load_model_ckpt(ckpt_path, args, device):
-    saved_ckpt = torch.load(ckpt_path, map_location='cpu')
+    saved_ckpt = torch_load_trusted_checkpoint(ckpt_path, map_location='cpu')
     if hasattr(args, 'test_config') and args.test_config != "":
         config = OmegaConf.load(args.test_config) 
         config = vars(config)["_content"]
