@@ -10,7 +10,7 @@ import os
 import sys
 import PIL
 import numpy as np
-from demo_visiual_bbox import resize_crop, draw_image
+from utils.demo_visiual_bbox import resize_crop, draw_image
 
 from diffusers import  ControlNetModel, UniPCMultistepScheduler, DPMSolverMultistepScheduler, StableDiffusionHicoNetLayoutPipeline
 

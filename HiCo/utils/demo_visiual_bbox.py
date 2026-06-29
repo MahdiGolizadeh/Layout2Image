@@ -25,7 +25,8 @@ def draw_image(image, obj_bbox, obj_class, img_save):
         draw.rectangle(d_rec, outline = color, width = 3)
 
         text = obj_class[iix]
-        font = ImageFont.truetype("./font/msyh.ttf", size=10)
+        font_path = os.path.join(os.path.dirname(__file__), "font", "msyh.ttf")
+        font = ImageFont.truetype(font_path, size=10)
         draw.text((d_rec[0], d_rec[1]), text, font = font, fill="red", align="left")
     dw_img.save(img_save)
 
