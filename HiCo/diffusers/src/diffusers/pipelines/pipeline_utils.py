@@ -62,11 +62,14 @@ from ..utils import (
 if is_transformers_available():
     import transformers
     from transformers import PreTrainedModel
-    from transformers.utils import FLAX_WEIGHTS_NAME as TRANSFORMERS_FLAX_WEIGHTS_NAME
-    from transformers.utils import SAFE_WEIGHTS_NAME as TRANSFORMERS_SAFE_WEIGHTS_NAME
-    from transformers.utils import WEIGHTS_NAME as TRANSFORMERS_WEIGHTS_NAME
+    from transformers import utils as transformers_utils
 
 from ..utils import FLAX_WEIGHTS_NAME, ONNX_EXTERNAL_WEIGHTS_NAME, ONNX_WEIGHTS_NAME, PushToHubMixin
+
+if is_transformers_available():
+    TRANSFORMERS_FLAX_WEIGHTS_NAME = getattr(transformers_utils, "FLAX_WEIGHTS_NAME", "flax_model.msgpack")
+    TRANSFORMERS_SAFE_WEIGHTS_NAME = getattr(transformers_utils, "SAFE_WEIGHTS_NAME", "model.safetensors")
+    TRANSFORMERS_WEIGHTS_NAME = getattr(transformers_utils, "WEIGHTS_NAME", "pytorch_model.bin")
 
 
 if is_accelerate_available():

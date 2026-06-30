@@ -25,7 +25,26 @@ from pathlib import Path
 from typing import Dict, Optional, Union
 from urllib import request
 
-from huggingface_hub import HfFolder, cached_download, hf_hub_download, model_info
+import huggingface_hub as hf_hub
+from huggingface_hub import hf_hub_download, model_info
+
+
+class HfFolder:
+    @staticmethod
+    def get_token():
+        return hf_hub.get_token()
+
+
+def cached_download(url, cache_dir=None, force_download=False, **kwargs):
+    cache_dir = cache_dir or HF_MODULES_CACHE
+    os.makedirs(cache_dir, exist_ok=True)
+    filename = os.path.basename(url.split("?", 1)[0]) or "download"
+    destination = os.path.join(cache_dir, filename)
+    if force_download or not os.path.exists(destination):
+        request.urlretrieve(url, destination)
+    return destination
+
+
 from packaging import version
 
 from .. import __version__

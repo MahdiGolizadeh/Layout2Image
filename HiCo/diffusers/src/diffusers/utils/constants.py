@@ -13,7 +13,11 @@
 # limitations under the License.
 import os
 
-from huggingface_hub.constants import HUGGINGFACE_HUB_CACHE, hf_cache_home
+from huggingface_hub import constants as hf_constants
+
+
+HUGGINGFACE_HUB_CACHE = hf_constants.HUGGINGFACE_HUB_CACHE
+hf_cache_home = getattr(hf_constants, "hf_cache_home", hf_constants.HF_HOME)
 
 
 default_cache_path = HUGGINGFACE_HUB_CACHE

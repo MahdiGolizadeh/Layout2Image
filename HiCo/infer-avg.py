@@ -1,4 +1,3 @@
-from diffusers.utils import load_image
 import torch
 from omegaconf import OmegaConf
 from safetensors.torch import load_file
@@ -8,6 +7,13 @@ import random
 import json
 import os
 import sys
+
+LOCAL_DIFFUSERS_SRC = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'diffusers', 'src')
+if LOCAL_DIFFUSERS_SRC not in sys.path:
+    sys.path.insert(0, LOCAL_DIFFUSERS_SRC)
+
+from diffusers.utils import load_image
+
 import PIL
 import numpy as np
 from utils.demo_visiual_bbox import resize_crop, draw_image

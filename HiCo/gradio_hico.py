@@ -8,6 +8,12 @@ import PIL
 from PIL import Image, ImageFont, ImageDraw
 import json
 import os
+import sys
+
+LOCAL_DIFFUSERS_SRC = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'diffusers', 'src')
+if LOCAL_DIFFUSERS_SRC not in sys.path:
+    sys.path.insert(0, LOCAL_DIFFUSERS_SRC)
+
 import torch
 import copy
 import datetime

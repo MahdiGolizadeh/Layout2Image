@@ -24,8 +24,8 @@ from pathlib import Path
 from typing import Dict, Optional, Union
 from uuid import uuid4
 
+import huggingface_hub as hf_hub
 from huggingface_hub import (
-    HfFolder,
     ModelCard,
     ModelCardData,
     create_repo,
@@ -42,6 +42,11 @@ from huggingface_hub.utils import (
 )
 from packaging import version
 from requests import HTTPError
+
+class HfFolder:
+    @staticmethod
+    def get_token():
+        return hf_hub.get_token()
 
 from .. import __version__
 from .constants import (

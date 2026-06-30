@@ -19,7 +19,7 @@ from typing import Any, Callable, Dict, List, Optional, Union
 import PIL
 import torch
 from transformers import (
-    CLIPFeatureExtractor,
+    CLIPImageProcessor as CLIPFeatureExtractor,
     CLIPProcessor,
     CLIPTextModel,
     CLIPTokenizer,

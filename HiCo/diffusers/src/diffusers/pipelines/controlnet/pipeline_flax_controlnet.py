@@ -23,7 +23,7 @@ from flax.core.frozen_dict import FrozenDict
 from flax.jax_utils import unreplicate
 from flax.training.common_utils import shard
 from PIL import Image
-from transformers import CLIPFeatureExtractor, CLIPTokenizer, FlaxCLIPTextModel
+from transformers import CLIPImageProcessor as CLIPFeatureExtractor, CLIPTokenizer, FlaxCLIPTextModel
 
 from ...models import FlaxAutoencoderKL, FlaxControlNetModel, FlaxUNet2DConditionModel
 from ...schedulers import (
