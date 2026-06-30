@@ -102,7 +102,14 @@ with open(file_json, encoding='utf-8') as f:
 
 for v in json_data:
 
-    base_info, caption, obj_nums, img_size, path_img, list_bbox_info = v
+    # Dataset entries may include optional fields after list_bbox_info, such as
+    # crop_location (documented in README.md).  Only the first six fields are
+    # needed for inference, so keep the loader compatible with both the older
+    # 6-field example format and the documented 7-field dataset format.
+    if len(v) < 6:
+        raise ValueError(f"Expected at least 6 fields in dataset entry, got {len(v)}: {v}")
+    base_info, caption, obj_nums, img_size, path_img, list_bbox_info = v[:6]
+
     img_id = base_info["id"]
 
 
