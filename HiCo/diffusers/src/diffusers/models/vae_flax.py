@@ -14,6 +14,7 @@
 
 # JAX implementation of VQGAN from taming-transformers https://github.com/CompVis/taming-transformers
 
+from __future__ import annotations
 import math
 from functools import partial
 from typing import Tuple

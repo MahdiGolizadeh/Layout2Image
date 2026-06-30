@@ -13,7 +13,7 @@
 # limitations under the License.
 
 # DISCLAIMER: This file is strongly influenced by https://github.com/ermongroup/ddim
-
+from __future__ import annotations
 from dataclasses import dataclass
 from typing import Optional, Tuple, Union
 
