@@ -275,6 +275,30 @@ def warn_deprecated_model_variant(pretrained_model_name_or_path, use_auth_token,
             FutureWarning,
         )
 
+def _is_transformers_clip_feature_extractor(library, class_name):
+    return library.__name__ == "transformers" and class_name == "CLIPFeatureExtractor"
+
+
+def _get_library_class(library, class_name):
+    """Return a class from an imported library, including compatibility aliases."""
+    if hasattr(library, class_name):
+        return getattr(library, class_name)
+
+    # `CLIPFeatureExtractor` was the class name stored in older Stable Diffusion
+    # model_index.json files. Recent transformers versions removed that public
+    # alias in favor of `CLIPImageProcessor`, so keep loading older checkpoints
+    # without requiring users to downgrade transformers or edit model configs.
+    if _is_transformers_clip_feature_extractor(library, class_name):
+        return getattr(library, "CLIPImageProcessor")
+
+    return getattr(library, class_name)
+
+
+def _get_library_class_or_none(library, class_name):
+    if hasattr(library, class_name) or _is_transformers_clip_feature_extractor(library, class_name):
+        return _get_library_class(library, class_name)
+
+    return None
 
 def maybe_raise_or_warn(
     library_name, library, class_name, importable_classes, passed_class_obj, name, is_pipeline_module
@@ -282,8 +306,8 @@ def maybe_raise_or_warn(
     """Simple helper method to raise or warn in case incorrect module has been passed"""
     if not is_pipeline_module:
         library = importlib.import_module(library_name)
-        class_obj = getattr(library, class_name)
-        class_candidates = {c: getattr(library, c, None) for c in importable_classes.keys()}
+        class_obj = _get_library_class(library, class_name)
+        class_candidates = {c: _get_library_class_or_none(library, c) for c in importable_classes.keys()}
 
         expected_class_obj = None
         for class_name, class_candidate in class_candidates.items():
@@ -319,8 +343,8 @@ def get_class_obj_and_candidates(library_name, class_name, importable_classes, p
         # else we just import it from the library.
         library = importlib.import_module(library_name)
 
-        class_obj = getattr(library, class_name)
-        class_candidates = {c: getattr(library, c, None) for c in importable_classes.keys()}
+        class_obj = _get_library_class(library, class_name)
+        class_candidates = {c: _get_library_class_or_none(library, c) for c in importable_classes.keys()}
 
     return class_obj, class_candidates
 
