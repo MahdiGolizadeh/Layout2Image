@@ -33,6 +33,11 @@ class StableDiffusionSafetyChecker(PreTrainedModel):
     config_class = CLIPConfig
 
     _no_split_modules = ["CLIPEncoderLayer"]
+    # Transformers >= 4.5x expects PreTrainedModel subclasses to expose an
+    # ``all_tied_weights_keys`` mapping during low-memory checkpoint loading.
+    # This legacy diffusers safety checker has no tied weights, so an empty
+    # mapping preserves the previous behavior while satisfying the newer API.
+    all_tied_weights_keys = {}
 
     def __init__(self, config: CLIPConfig):
         super().__init__(config)
