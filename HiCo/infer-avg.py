@@ -8,11 +8,17 @@ import json
 import os
 import sys
 
+# The local diffusers fork used by HiCo only needs the PyTorch pipeline for
+# this script.  Newer Colab/Python images may have JAX/Flax installed while
+# using a transformers build that no longer exposes FlaxCLIPTextModel, which
+# makes diffusers import optional Flax Stable Diffusion modules and fail before
+# inference starts. Disable Flax auto-detection unless the caller explicitly
+# opts back in.
+os.environ.setdefault("USE_FLAX", "0")
+
 LOCAL_DIFFUSERS_SRC = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'diffusers', 'src')
 if LOCAL_DIFFUSERS_SRC not in sys.path:
     sys.path.insert(0, LOCAL_DIFFUSERS_SRC)
-
-from diffusers.utils import load_image
 
 import PIL
 import numpy as np
