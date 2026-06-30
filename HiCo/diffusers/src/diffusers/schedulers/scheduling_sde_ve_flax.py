@@ -13,7 +13,7 @@
 # limitations under the License.
 
 # DISCLAIMER: This file is strongly influenced by https://github.com/yang-song/score_sde_pytorch
-
+from __future__ import annotations
 from dataclasses import dataclass
 from typing import Optional, Tuple, Union
 
