@@ -55,9 +55,33 @@ Download model weights for [COCO backboned with SD2.1](https://huggingface.co/cp
 
 ---
 
-## There are three ways to sample from the model:
+## There are four ways to sample from the model:
 
-1. **Recommended**: using interactive webpage. This is the work around before Gradio supports bounding box input. You will need flask to run the server. To obtain better image quality, we use chatGPT to generate text prompts. You need to set up your OpenAI API key if you want to use. **NOTE**: If not providing openai api key, it will use default text prompt by concatenating the class labels (e.g. person, dog, car, etc.), the result may have semantic meaningless background.
+1. **Direct layout input, no UI (recommended for Colab/scripts)**: provide bounding boxes and class names directly from a notebook cell or shell command. Coordinates are normalized `x,y,width,height` by default, and class names should match COCO labels used by LayoutDiffuse. This path does not use Gradio, Flask, or any other web UI.
+```bash
+python generate_from_layout.py \
+  -c configs/cocostuff_SD2_1.json \
+  --model_path /path/to/LD_SD2_1.ckpt \
+  --layout_json '[{"bbox":[0.10,0.18,0.30,0.55],"class":"person"},{"bbox":[0.55,0.50,0.30,0.28],"class":"dog"}]' \
+  --image_width 512 \
+  --image_height 512 \
+  --output_dir outputs/colab_layout \
+  --output_name person_and_dog
+```
+
+You can also pass a JSON file, pixel coordinates, or `xyxy` boxes:
+```bash
+python generate_from_layout.py \
+  -c configs/cocostuff_SD2_1.json \
+  --model_path /path/to/LD_SD2_1.ckpt \
+  --layout_json layout.json \
+  --bbox_format xyxy \
+  --box_units pixels
+```
+
+The script saves the generated image, the generated image with boxes, the blank layout canvas, and a combined triptych under `--output_dir`. If `--openai_api_key` is omitted, the prompt is built by concatenating the class labels.
+
+2. **Recommended UI**: using interactive webpage. This is the work around before Gradio supports bounding box input. You will need flask to run the server. To obtain better image quality, we use chatGPT to generate text prompts. You need to set up your OpenAI API key if you want to use. **NOTE**: If not providing openai api key, it will use default text prompt by concatenating the class labels (e.g. person, dog, car, etc.), the result may have semantic meaningless background.
 ![Interactive plotting](figures/LD_interacitve_demo.gif)
 ```
 pip install flask
@@ -69,14 +93,14 @@ flask run
 ```
 
 
-2. Use [Gradio](https://gradio.app/) to use LayoutDiffuse. Gradio has not supported bounding box input yet, so we current support to upload a reference image and generating an image with the same layout. The layout is detected by a YOLOv5 model. **NOTE**: If not providing openai api key, it will use default text prompt by concatenating the class labels (e.g. person, dog, car, etc.), the result may have semantic meaningless background
+3. Use [Gradio](https://gradio.app/) to use LayoutDiffuse. Gradio has not supported bounding box input yet, so we current support to upload a reference image and generating an image with the same layout. The layout is detected by a YOLOv5 model. **NOTE**: If not providing openai api key, it will use default text prompt by concatenating the class labels (e.g. person, dog, car, etc.), the result may have semantic meaningless background
 ```
 pip install gradio
 python run_gradio.py -c configs/cocostuff_SD2_1.json --openai_api_key [OPENAI_API_KEY] --model_path [PATH_TO_MODEL, if not given, it will use the default path e.g., "experiments/cocostuff_LayoutDiffuse_SD2_1/latest.ckpt"]
 ```
 ![Gradio plotting](figures/LD_gradio_demo.gif)
 
-3. Sampling many images (using COCO dataset) for benchmarking purpose. Replace `-c` with other config files to sample from other datasets.
+4. Sampling many images (using COCO dataset) for benchmarking purpose. Replace `-c` with other config files to sample from other datasets.
 See [notebooks for single image sample](sampling.ipynb) or running sampling for the dataset
 ```
 python sampling.py -c configs/cocostuff_SD2_1.json --model_path [PATH_TO_MODEL, if not given, it will use the default path e.g., "experiments/cocostuff_LayoutDiffuse_SD2_1/latest.ckpt"]
