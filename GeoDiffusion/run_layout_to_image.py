@@ -1,4 +1,6 @@
 import os
+import json
+from pathlib import Path
 import cv2
 import numpy as np
 from PIL import Image
@@ -11,14 +13,66 @@ from utils.generation_utils import load_checkpoint, bbox_encode, draw_layout
 from accelerate.utils import set_seed
 set_seed(0)
 
-def run_layout_to_image(layout, args):
+def normalize_json_record(record):
+  """Convert one JSON input record to the layout format expected by GeoDiffusion."""
+  if not isinstance(record, list) or len(record) < 6:
+    raise ValueError("Each input JSON record must be a list with at least 6 entries.")
+
+  image_info = record[0] if isinstance(record[0], dict) else {}
+  caption = record[1]
+  size_info = record[3] if isinstance(record[3], dict) else {}
+  objects = record[5]
+
+  width = int(size_info.get("W", image_info.get("width", 512)))
+  height = int(size_info.get("H", image_info.get("height", 512)))
+  if width <= 0 or height <= 0:
+    raise ValueError(f"Image dimensions must be positive, got W={width}, H={height}.")
+
+  bboxes = []
+  for obj in objects:
+    if not isinstance(obj, list) or len(obj) != 2:
+      raise ValueError(f"Each object must be [label, [x1, y1, x2, y2]], got {obj}.")
+    label, box = obj
+    if len(box) != 4:
+      raise ValueError(f"Bounding boxes must contain 4 values, got {box}.")
+    x1, y1, x2, y2 = [float(coord) for coord in box]
+    bboxes.append([label, x1 / width, y1 / height, x2 / width, y2 / height])
+
+  layout = {
+    "bbox": bboxes,
+    "caption": caption,
+    "width": width,
+    "height": height,
+  }
+  if isinstance(image_info, dict):
+    layout["key"] = image_info.get("key")
+    layout["id"] = image_info.get("id")
+  return layout
+
+
+def load_layouts_from_json(input_json):
+  with open(input_json, "r", encoding="utf-8") as f:
+    records = json.load(f)
+  if not isinstance(records, list):
+    raise ValueError("Input JSON must contain a top-level list of records.")
+  return [normalize_json_record(record) for record in records]
+
+
+def run_layout_to_image(layout, args, pipe=None, generation_config=None, output_stem=None):
   ########################
   # Build pipeline
   #########################
-  pipe, generation_config = load_checkpoint(args.ckpt_path)
-  pipe = pipe.to("cuda")
+  if pipe is None or generation_config is None:
+    pipe, generation_config = load_checkpoint(args.ckpt_path)
+    pipe = pipe.to("cuda")
+  else:
+    generation_config = generation_config.copy()
   args = {arg: getattr(args, arg) for arg in vars(args) if getattr(args, arg) is not None}
   generation_config.update(args)
+  if "width" in layout:
+    generation_config["width"] = layout["width"]
+  if "height" in layout:
+    generation_config["height"] = layout["height"]
   
   # Sometimes the nsfw checker is confused by the Pokémon images, you can disable
   # it at your own risk here
@@ -43,6 +97,8 @@ def run_layout_to_image(layout, args):
   bboxes = layout['bbox'].copy()
   layout["bbox"] = bbox_encode(layout['bbox'], generation_config)
   prompt = generation_config['prompt_template'].format(**layout)
+  if layout.get("caption") and "caption" not in generation_config['prompt_template']:
+    prompt = f"{layout['caption']} {prompt}"
   print(prompt)
   
   ########################
@@ -64,11 +120,13 @@ def run_layout_to_image(layout, args):
   root = args["output_dir"]
   os.makedirs(root, exist_ok=True)
   layout_canvas = draw_layout(bboxes)
-  layout_canvas = Image.fromarray(layout_canvas, mode='RGB').save(os.path.join(root, '{}_layout.jpg'.format(generation_config['dataset'])))
+  output_stem = output_stem or generation_config['dataset']
+  layout_canvas = Image.fromarray(layout_canvas, mode='RGB').save(os.path.join(root, f'{output_stem}_layout.jpg'))
   for idx, image in enumerate(images):
     image = np.asarray(image)
     image = Image.fromarray(image, mode='RGB')
-    image.save(os.path.join(root, '{}_{}.jpg'.format(generation_config['dataset'], idx)))
+    suffix = '' if len(images) == 1 else f'_{idx}'
+    image.save(os.path.join(root, f'{output_stem}{suffix}.jpg'))
 
 if __name__ == "__main__":
   parser = ArgumentParser(description='Layout-to-image generation script')
@@ -77,8 +135,19 @@ if __name__ == "__main__":
   parser.add_argument('--cfg_scale', type=float, default=None)
   parser.add_argument('--num_inference_steps', type=int, default=None)
   parser.add_argument('--output_dir', type=str, default="./results/")
+  parser.add_argument('--input_json', type=str, default=None, help='Path to a JSON file containing layout-to-image records.')
   args = parser.parse_args()
   
+  if args.input_json:
+    pipe, generation_config = load_checkpoint(args.ckpt_path)
+    pipe = pipe.to("cuda")
+    layouts = load_layouts_from_json(args.input_json)
+    input_stem = Path(args.input_json).stem
+    for idx, layout in enumerate(layouts):
+      output_stem = input_stem if len(layouts) == 1 else f"{input_stem}_{idx:06d}"
+      run_layout_to_image(layout, args, pipe=pipe, generation_config=generation_config, output_stem=output_stem)
+    raise SystemExit(0)
+
   ########################
   # Define layouts
   # Note: 
