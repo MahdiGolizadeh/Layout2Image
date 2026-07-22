@@ -59,39 +59,6 @@ def load_layouts_from_json(input_json):
 
 
 VALID_NUIMAGES_CAMERAS = ['front', 'front left', 'front right', 'back', 'back left', 'back right']
-LABEL_ALIASES = {
-  'nuimages': {
-    'person': 'pedestrian',
-    'people': 'pedestrian',
-    'human': 'pedestrian',
-    'vehicle': 'car',
-  },
-}
-
-
-def normalize_bbox_labels(bboxes, generation_config):
-  """Map common labels and drop boxes unsupported by the selected checkpoint."""
-  dataset = generation_config['dataset']
-  valid_labels = set(generation_config['dataset2classes']['classes'])
-  aliases = LABEL_ALIASES.get(dataset, {})
-  normalized_bboxes = []
-  skipped_labels = []
-
-  for bbox in bboxes:
-    label = aliases.get(bbox[0], bbox[0])
-    if label in valid_labels:
-      normalized_bboxes.append([label, *bbox[1:]])
-    else:
-      skipped_labels.append(bbox[0])
-
-  if skipped_labels:
-    skipped = ', '.join(sorted(set(skipped_labels)))
-    print(
-      f"Warning: skipping labels not supported by the {dataset} checkpoint: {skipped}. "
-      "Use a checkpoint trained for those classes if you need them as layout boxes."
-    )
-
-  return normalized_bboxes
 
 
 def run_layout_to_image(layout, args, pipe=None, generation_config=None, output_stem=None):
@@ -137,7 +104,6 @@ def run_layout_to_image(layout, args, pipe=None, generation_config=None, output_
         f"nuImages layouts require camera to be one of {VALID_NUIMAGES_CAMERAS}, "
         f"but got {layout['camera']!r}."
       )
-  layout['bbox'] = normalize_bbox_labels(layout['bbox'], generation_config)
   bboxes = layout['bbox'].copy()
   layout["bbox"] = bbox_encode(layout['bbox'], generation_config)
   prompt = generation_config['prompt_template'].format(**layout)
