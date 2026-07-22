@@ -1,5 +1,6 @@
 import io
 import os
+import gc
 import torch
 import torchvision
 from .dist import get_rank
@@ -236,7 +237,10 @@ def synchronize():
     dist.barrier()
 
 def load_model_ckpt(ckpt_path, args, device):
-    saved_ckpt = torch_load_trusted_checkpoint(ckpt_path, map_location='cpu')
+    load_ckpt_to_device = getattr(args, "load_ckpt_to_device", False)
+    ckpt_map_location = device if load_ckpt_to_device else "cpu"
+    print(f"loading checkpoint with map_location={ckpt_map_location}")
+    saved_ckpt = torch_load_trusted_checkpoint(ckpt_path, map_location=ckpt_map_location)
     if hasattr(args, 'test_config') and args.test_config != "":
         config = OmegaConf.load(args.test_config) 
         config = vars(config)["_content"]
@@ -249,15 +253,20 @@ def load_model_ckpt(ckpt_path, args, device):
     text_encoder = instantiate_from_config(config['text_encoder']).to(device).eval()
     diffusion = instantiate_from_config(config['diffusion']).to(device)
 
-    try:
+    if 'ema' in saved_ckpt:
         # load ema model if exists
         print("Loading ema")
         model.load_state_dict( saved_ckpt['ema'] )
-    except:
+    else:
         print("Loading non-ema model")
         model.load_state_dict( saved_ckpt['model'] )
     autoencoder.load_state_dict( saved_ckpt["autoencoder"]  )
     text_encoder.load_state_dict( saved_ckpt["text_encoder"], strict=False )
     diffusion.load_state_dict( saved_ckpt["diffusion"]  )
+
+    del saved_ckpt
+    gc.collect()
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
 
     return model, autoencoder, text_encoder, diffusion, config
