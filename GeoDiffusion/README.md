@@ -56,6 +56,14 @@ Download the pre-trained models and put them under the root directory. Run the f
 python run_layout_to_image.py $CKPT_PATH --output_dir ./results/
 ```
 
+To generate from a JSON layout file, pass `--input_json`. Use a checkpoint that matches the classes in the JSON boxes: COCO-style files with labels like `person`, `sports ball`, or `teddy bear` should use a COCO-Stuff checkpoint, while nuImages checkpoints only support driving-scene labels. For nuImages checkpoints, the prompt requires a camera name; if a JSON record does not include `camera`, the script defaults to `front`. You can choose another valid nuImages camera with `--camera`, for example:
+
+```bash
+python run_layout_to_image.py $CKPT_PATH --input_json /path/to/layout.json --output_dir ./results/ --camera "front left"
+```
+
+When JSON boxes include labels unsupported by the selected checkpoint, the script prints a warning and skips those boxes instead of failing. Common labels such as `person` are mapped to the nearest supported nuImages class (`pedestrian`) when possible.
+
 
 
 ## Train GeoDiffusion
