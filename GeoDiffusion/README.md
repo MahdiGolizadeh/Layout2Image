@@ -56,6 +56,12 @@ Download the pre-trained models and put them under the root directory. Run the f
 python run_layout_to_image.py $CKPT_PATH --output_dir ./results/
 ```
 
+To generate from a JSON layout file, pass `--input_json`. For nuImages checkpoints, the prompt requires a camera name; if a JSON record does not include `camera`, the script now defaults to `front`. You can choose another valid nuImages camera with `--camera`, for example:
+
+```bash
+python run_layout_to_image.py $CKPT_PATH --input_json /path/to/layout.json --output_dir ./results/ --camera "front left"
+```
+
 
 
 ## Train GeoDiffusion
