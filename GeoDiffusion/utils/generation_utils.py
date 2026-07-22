@@ -7,6 +7,7 @@ from itertools import cycle
 
 import torch
 import diffusers
+from diffusers import DPMSolverMultistepScheduler
 
 #####################
 # Constants
@@ -57,8 +58,6 @@ def load_checkpoint(ckpt_path, pipeline=diffusers.StableDiffusionPipeline):
     generation_config['dataset2classes'] = dataset2classes[generation_config['dataset']]
 
     if generation_config['dataset'] == 'coco_stuff':
-        assert '0.16.0' in diffusers.__version__, "Be default, we adopt diffusers==0.16.0 to adopt DPMSolver++ for inference on COCO-Stuff."
-        from diffusers import DPMSolverMultistepScheduler
         pipe.scheduler = DPMSolverMultistepScheduler.from_config(pipe.scheduler.config)
     return pipe, generation_config
 

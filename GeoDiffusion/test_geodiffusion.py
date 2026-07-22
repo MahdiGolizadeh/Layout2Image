@@ -5,7 +5,7 @@ from PIL import Image
 
 from argparse import ArgumentParser
 from accelerate import Accelerator
-from diffusers import StableDiffusionPipeline
+from diffusers import StableDiffusionPipeline, DPMSolverMultistepScheduler
 import torch
 
 from mmcv import Config
@@ -63,8 +63,6 @@ print("{}".format(args).replace(', ', ',\n'))
 ckpt_path = args.ckpt_path
 pipe = StableDiffusionPipeline.from_pretrained(ckpt_path, torch_dtype=torch.float16)  
 if args.use_dpmsolver:
-  assert '0.16.0' in diffusers.__version__, "Be default, we adopt diffusers==0.16.0 to adopt DPMSolver++ for inference on COCO-Stuff."
-  from diffusers import DPMSolverMultistepScheduler
   pipe.scheduler = DPMSolverMultistepScheduler.from_config(pipe.scheduler.config)
 pipe = pipe.to("cuda")
 
