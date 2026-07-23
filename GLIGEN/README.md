@@ -69,6 +69,49 @@ python gligen_inference.py
 ```
 Example samples for each checkpoint will be saved in `generation_samples`. One can check `gligen_inference.py` for more details about interface. 
 
+### Inference from Layout2Image JSON
+
+`gligen_inference.py` can also read Layout2Image-style JSON files containing a prompt, canvas size, and pixel-space bounding boxes. Save a file such as `layout_input.json`:
+
+```json
+[
+  [
+    {
+      "id": 1740000000000,
+      "key": "000000776",
+      "width": 512,
+      "height": 512,
+      "url": "",
+      "f_path": "The local path of your own image./000000000.jpg"
+    },
+    "Three brown teddy bears lying together on a striped fabric surface, with a blue cloth at the bottom right.",
+    4,
+    {"W": 512, "H": 512},
+    "The local path of your own image.",
+    [
+      ["teddy bear", [2, 45, 414, 422]],
+      ["teddy bear", [3, 223, 383, 506]],
+      ["teddy bear", [114, 5, 511, 441]],
+      ["potted plant", [0, 0, 512, 512]]
+    ],
+    {"CropX": 0.0, "CropY": 0.0}
+  ]
+]
+```
+
+Then run text-box generation with the JSON file:
+
+```bash
+python gligen_inference.py \
+  --input_json layout_input.json \
+  --ckpt_dir gligen_checkpoints \
+  --json_ckpt gligen_checkpoints/checkpoint_generation_text.pth \
+  --folder generation_samples \
+  --batch_size 5
+```
+
+The script normalizes each `[x1, y1, x2, y2]` box using the record's `W` and `H`, saves outputs under `generation_samples/<key-or-id>/`, and automatically ignores objects beyond the checkpoint object limit. If the checkpoint does not expose a limit, use `--max_objs` to set the fallback limit.
+
 
 ## Training 
 
