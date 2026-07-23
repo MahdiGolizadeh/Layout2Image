@@ -1,4 +1,5 @@
 import argparse
+import json
 from PIL import Image, ImageDraw
 from omegaconf import OmegaConf
 from ldm.models.diffusion.ddim import DDIMSampler
@@ -79,6 +80,77 @@ def resolve_path(path):
         return script_relative
 
     return path
+
+
+
+def normalize_box(box, width, height):
+    """Convert a pixel-space [x1, y1, x2, y2] box to normalized GLIGEN coordinates."""
+    if width <= 0 or height <= 0:
+        raise ValueError(f"Image dimensions must be positive, got width={width}, height={height}")
+
+    x1, y1, x2, y2 = [float(value) for value in box]
+    x1 = max(0.0, min(x1, width)) / width
+    x2 = max(0.0, min(x2, width)) / width
+    y1 = max(0.0, min(y1, height)) / height
+    y2 = max(0.0, min(y2, height)) / height
+    return [x1, y1, x2, y2]
+
+
+def meta_from_layout_json_record(record, ckpt, alpha_type):
+    """Convert one Layout2Image JSON record into the metadata expected by GLIGEN."""
+    if not isinstance(record, (list, tuple)) or len(record) < 6:
+        raise ValueError("Each JSON record must be a list with at least 6 entries.")
+
+    image_info = record[0] if isinstance(record[0], dict) else {}
+    prompt = record[1]
+    canvas = record[3] if isinstance(record[3], dict) else {}
+    objects = record[5]
+
+    width = int(canvas.get("W") or image_info.get("width") or 512)
+    height = int(canvas.get("H") or image_info.get("height") or 512)
+
+    phrases = []
+    locations = []
+    for obj in objects:
+        if not isinstance(obj, (list, tuple)) or len(obj) < 2:
+            raise ValueError(f"Invalid object entry in JSON record: {obj!r}")
+        phrase, box = obj[0], obj[1]
+        phrases.append(str(phrase))
+        locations.append(normalize_box(box, width, height))
+
+    save_name = str(image_info.get("key") or image_info.get("id") or "layout_json")
+    return dict(
+        ckpt=ckpt,
+        prompt=str(prompt),
+        phrases=phrases,
+        locations=locations,
+        alpha_type=alpha_type,
+        save_folder_name=save_name,
+    )
+
+
+def load_layout_json(path, ckpt, alpha_type):
+    """Load Layout2Image JSON records and return GLIGEN metadata dictionaries."""
+    path = resolve_path(path)
+    with open(path, "r", encoding="utf-8") as f:
+        records = json.load(f)
+
+    if not isinstance(records, list):
+        raise ValueError("The JSON input must contain a top-level list of records.")
+
+    return [meta_from_layout_json_record(record, ckpt, alpha_type) for record in records]
+
+
+def get_max_objs(config, fallback):
+    """Best-effort discovery of the maximum number of objects accepted by this checkpoint."""
+    for key in (
+        "grounding_tokenizer_input.params.max_objs",
+        "grounding_tokenizer_input.params.n_boxes",
+    ):
+        value = OmegaConf.select(config, key)
+        if value is not None:
+            return int(value)
+    return int(fallback)
 
 def load_ckpt(ckpt_path):
     ckpt_path = resolve_path(ckpt_path)
@@ -165,6 +237,19 @@ def complete_mask(has_mask, max_objs):
 
 @torch.no_grad()
 def prepare_batch(meta, batch=1, max_objs=30):
+    if len(meta.get("locations", [])) > max_objs:
+        print(f"Ignoring {len(meta['locations']) - max_objs} object(s) beyond this model limit of {max_objs}.")
+        meta = deepcopy(meta)
+        meta["locations"] = meta["locations"][:max_objs]
+        if meta.get("phrases") is not None:
+            meta["phrases"] = meta["phrases"][:max_objs]
+        if meta.get("images") is not None:
+            meta["images"] = meta["images"][:max_objs]
+        if meta.get("text_mask") is not None and not isinstance(meta.get("text_mask"), (int, float)):
+            meta["text_mask"] = meta["text_mask"][:max_objs]
+        if meta.get("image_mask") is not None and not isinstance(meta.get("image_mask"), (int, float)):
+            meta["image_mask"] = meta["image_mask"][:max_objs]
+
     phrases, images = meta.get("phrases"), meta.get("images")
     images = [None]*len(phrases) if images==None else images 
     phrases = [None]*len(images) if phrases==None else phrases 
@@ -394,7 +479,7 @@ def run(meta, config, starting_noise=None):
     elif "sem" in meta["ckpt"]:
         batch = prepare_batch_sem(meta, config.batch_size)
     else:
-        batch = prepare_batch(meta, config.batch_size)
+        batch = prepare_batch(meta, config.batch_size, max_objs=get_max_objs(config, args.max_objs))
     context = text_encoder.encode(  [meta["prompt"]]*config.batch_size  )
     uc = text_encoder.encode( config.batch_size*[""] )
     if args.negative_prompt is not None:
@@ -482,6 +567,9 @@ if __name__ == "__main__":
     parser.add_argument("--task", type=str, default="generation_box_text", help="Example to run. Use all to run every bundled example.")
     parser.add_argument("--ckpt_dir", type=str, default="gligen_checkpoints", help="Directory containing GLIGEN .pth checkpoints.")
     parser.add_argument("--negative_prompt", type=str,  default='longbody, lowres, bad anatomy, bad hands, missing fingers, extra digit, fewer digits, cropped, worst quality, low quality', help="")
+    parser.add_argument("--input_json", type=str, default=None, help="Layout2Image JSON file to run instead of the bundled examples.")
+    parser.add_argument("--json_ckpt", type=str, default=None, help="Checkpoint path for --input_json. Defaults to checkpoint_generation_text.pth in --ckpt_dir.")
+    parser.add_argument("--max_objs", type=int, default=30, help="Fallback maximum number of layout objects when the checkpoint config does not specify one.")
     #parser.add_argument("--negative_prompt", type=str,  default=None, help="")
     args = parser.parse_args()
     
@@ -660,9 +748,13 @@ if __name__ == "__main__":
     ]
 
 
+    if args.input_json is not None:
+        json_ckpt = args.json_ckpt or os.path.join(args.ckpt_dir, "checkpoint_generation_text.pth")
+        meta_list = load_layout_json(args.input_json, json_ckpt, [0.3, 0.0, 0.7])
+
     starting_noise = torch.randn(args.batch_size, 4, 64, 64).to(device)
     starting_noise = None
-    if args.task != "all":
+    if args.input_json is None and args.task != "all":
         task_names = [meta["save_folder_name"] for meta in meta_list]
         if args.task not in task_names:
             raise ValueError(f"Unknown --task {args.task!r}. Choose one of: {task_names + ['all']}")
