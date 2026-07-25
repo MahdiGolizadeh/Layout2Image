@@ -729,6 +729,7 @@ class StableDiffusionHicoNetLayoutPipeline(
         guess_mode: bool = False,
         control_guidance_start: Union[float, List[float]] = 0.0,
         control_guidance_end: Union[float, List[float]] = 1.0,
+        debug_feature_callback: Optional[Callable[[Dict[str, Any]], None]] = None,
     ):
         r"""
         The call function to the pipeline for generation.
@@ -1047,6 +1048,18 @@ class StableDiffusionHicoNetLayoutPipeline(
                             return_dict=False,
                         )
 
+                        if debug_feature_callback is not None:
+                            debug_feature_callback(
+                                {
+                                    "stage": "hico_before_fuse",
+                                    "timestep_index": i,
+                                    "timestep": t,
+                                    "layout_index": jj,
+                                    "down_block_res_samples": down_samples,
+                                    "mid_block_res_sample": mid_sample,
+                                }
+                            )
+
                         if fuse_type == "mask":
                             fuse_down_samples.append(down_samples)
                             fuse_mid_samples.append(mid_sample)
@@ -1088,6 +1101,18 @@ class StableDiffusionHicoNetLayoutPipeline(
                         return_dict=False,
                     )
 
+                    if debug_feature_callback is not None:
+                        debug_feature_callback(
+                            {
+                                "stage": "hico_before_fuse",
+                                "timestep_index": i,
+                                "timestep": t,
+                                "layout_count": BNS,
+                                "down_block_res_samples": down_samples,
+                                "mid_block_res_sample": mid_sample,
+                            }
+                        )
+
                     # batch fuse
                     down_block_res_samples = [sum(torch.split(sample, 2, dim=0)) for sample in down_samples]
                     mid_block_res_sample = sum(torch.split(mid_sample, 2, dim=0))
@@ -1104,6 +1129,17 @@ class StableDiffusionHicoNetLayoutPipeline(
                     pass
                 else:
                     pass
+
+                if debug_feature_callback is not None:
+                    debug_feature_callback(
+                        {
+                            "stage": "hico_after_fuse",
+                            "timestep_index": i,
+                            "timestep": t,
+                            "down_block_res_samples": down_block_res_samples,
+                            "mid_block_res_sample": mid_block_res_sample,
+                        }
+                    )
 
                 if guess_mode and do_classifier_free_guidance:
 
